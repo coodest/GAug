@@ -13,7 +13,7 @@ from models.GAug import GAug
 import torch
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid, CitationFull
-from common.loader import Loader
+from lp_common import LPLoader, LPEval
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='single')
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # features = pickle.load(open(f'data/graphs/{args.dataset}_features.pkl', 'rb'))
     # labels = pickle.load(open(f'data/graphs/{args.dataset}_labels.pkl', 'rb'))
 
-    tvt_nids, adj_orig, features, labels, graph = Loader.load()
+    tvt_nids, adj_orig, features, labels, graph = LPLoader.load()
     
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())

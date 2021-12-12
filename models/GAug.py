@@ -9,6 +9,7 @@ import pyro
 from itertools import combinations
 from sklearn.metrics import roc_auc_score, average_precision_score
 import pickle
+from lp_common import LPEval
 
 class GAug(object):
     def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=1, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', feat_norm='row'):
@@ -268,7 +269,7 @@ class GAug(object):
 
         # here useing the emb
         print(emb.shape)
-        from lp_eval import LPEval
+        
         LPEval.eval(
             graph, 
             emb.cpu().detach().numpy()
