@@ -1,4 +1,9 @@
 import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"  # must before import the tensorflow
+
+
 import json
 import pickle
 import argparse
@@ -6,6 +11,9 @@ import numpy as np
 import scipy.sparse as sp
 from models.GAug import GAug
 import torch
+import torch_geometric.transforms as T
+from torch_geometric.datasets import Planetoid, CitationFull
+from common.loader import Loader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='single')
@@ -20,10 +28,13 @@ if __name__ == "__main__":
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
         gpu = 0
 
-    tvt_nids = pickle.load(open(f'data/graphs/{args.dataset}_tvt_nids.pkl', 'rb'))
-    adj_orig = pickle.load(open(f'data/graphs/{args.dataset}_adj.pkl', 'rb'))
-    features = pickle.load(open(f'data/graphs/{args.dataset}_features.pkl', 'rb'))
-    labels = pickle.load(open(f'data/graphs/{args.dataset}_labels.pkl', 'rb'))
+    # tvt_nids = pickle.load(open(f'data/graphs/{args.dataset}_tvt_nids.pkl', 'rb'))
+    # adj_orig = pickle.load(open(f'data/graphs/{args.dataset}_adj.pkl', 'rb'))
+    # features = pickle.load(open(f'data/graphs/{args.dataset}_features.pkl', 'rb'))
+    # labels = pickle.load(open(f'data/graphs/{args.dataset}_labels.pkl', 'rb'))
+
+    tvt_nids, adj_orig, features, labels, graph = Loader.load()
+    
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())
 
@@ -47,8 +58,8 @@ if __name__ == "__main__":
         n_layers = 3
 
     accs = []
-    for _ in range(30):
+    for _ in range(1):
         model = GAug(adj_orig, features, labels, tvt_nids, cuda=gpu, gae=True, alpha=params['alpha'], beta=params['beta'], temperature=params['temp'], warmup=0, gnnlayer_type=gnn, jknet=jk, lr=lr, n_layers=n_layers, log=False, feat_norm=feat_norm)
-        acc = model.fit(pretrain_ep=params['pretrain_ep'], pretrain_nc=params['pretrain_nc'])
+        acc = model.fit(graph, pretrain_ep=params['pretrain_ep'], pretrain_nc=params['pretrain_nc'])
         accs.append(acc)
     print(f'Micro F1: {np.mean(accs):.6f}, std: {np.std(accs):.6f}')

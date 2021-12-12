@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import pickle
 
 class GAug(object):
-    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', feat_norm='row'):
+    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=1, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', feat_norm='row'):
         self.lr = lr
         self.weight_decay = weight_decay
         self.n_epochs = epochs
@@ -170,7 +170,7 @@ class GAug(object):
         best_val_acc = 0.
         for epoch in range(n_epochs):
             model.train()
-            nc_logits = model.nc_net(adj, features)
+            nc_logits, emb = model.nc_net(adj, features)
             # losses
             loss = nc_criterion(nc_logits[self.train_nid], labels[self.train_nid])
             optimizer.zero_grad()
@@ -178,7 +178,7 @@ class GAug(object):
             optimizer.step()
             model.eval()
             with torch.no_grad():
-                nc_logits_eval = model.nc_net(adj, features)
+                nc_logits_eval, emb = model.nc_net(adj, features)
             val_acc = self.eval_node_cls(nc_logits_eval[self.val_nid], labels[self.val_nid])
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
@@ -189,7 +189,7 @@ class GAug(object):
                 self.logger.info('NCNet pretrain, Epoch [{:2}/{}]: loss {:.4f}, val acc {:.4f}'
                             .format(epoch+1, n_epochs, loss.item(), val_acc))
 
-    def fit(self, pretrain_ep=200, pretrain_nc=20):
+    def fit(self, graph, pretrain_ep=200, pretrain_nc=20):
         """ train the model """
         # move data to device
         adj_norm = self.adj_norm.to(self.device)
@@ -227,12 +227,13 @@ class GAug(object):
         patience_step = 0
         # train model
         for epoch in range(self.n_epochs):
+            print(f'epoch: {epoch}')
             # update the learning rate for ep_net if needed
             if self.warmup:
                 optims.update_lr(0, ep_lr_schedule[epoch])
 
             model.train()
-            nc_logits, adj_logits = model(adj_norm, adj_orig, features)
+            nc_logits, adj_logits, emb = model(adj_norm, adj_orig, features)
 
             # losses
             loss = nc_loss = nc_criterion(nc_logits[self.train_nid], labels[self.train_nid])
@@ -244,7 +245,7 @@ class GAug(object):
             # validate (without dropout)
             model.eval()
             with torch.no_grad():
-                nc_logits_eval = model.nc_net(adj, features)
+                nc_logits_eval, emb = model.nc_net(adj, features)
             val_acc = self.eval_node_cls(nc_logits_eval[self.val_nid], labels[self.val_nid])
             adj_pred = torch.sigmoid(adj_logits.detach()).cpu()
             ep_auc, ep_ap = self.eval_edge_pred(adj_pred, self.val_edges, self.edge_labels)
@@ -263,7 +264,19 @@ class GAug(object):
                     break
         # get final test result without early stop
         with torch.no_grad():
-            nc_logits_eval = model.nc_net(adj, features)
+            nc_logits_eval, emb = model.nc_net(adj, features)
+
+        # here useing the emb
+        print(emb.shape)
+        from lp_eval import LPEval
+        LPEval.eval(
+            graph, 
+            emb.cpu().detach().numpy()
+        )
+
+        exit(0)
+
+
         test_acc_final = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
         # log both results
         self.logger.info('Final test acc with early stop: {:.4f}, without early stop: {:.4f}'
@@ -310,7 +323,10 @@ class GAug(object):
         else:
             preds = torch.argmax(nc_logits, dim=1)
             correct = torch.sum(preds == labels)
-            fmeasure = correct.item() / len(labels)
+            if len(labels) > 0:
+                fmeasure = correct.item() / len(labels)
+            else:
+                fmeasure = 0
         return fmeasure
 
     @staticmethod
@@ -489,8 +505,8 @@ class GAug_model(nn.Module):
             else:
                 adj_new = self.sample_adj_add_bernoulli(adj_logits, adj_orig, self.alpha)
         adj_new_normed = self.normalize_adj(adj_new)
-        nc_logits = self.nc_net(adj_new_normed, features)
-        return nc_logits, adj_logits
+        nc_logits, emb = self.nc_net(adj_new_normed, features)
+        return nc_logits, adj_logits, emb
 
 
 class VGAE(nn.Module):
@@ -549,9 +565,11 @@ class GNN(nn.Module):
 
     def forward(self, adj, features):
         h = features
-        for layer in self.layers:
+        for ind, layer in enumerate(self.layers):
             h = layer(adj, h)
-        return h
+            if ind == len(self.layers) -2:
+                emb = h
+        return h, emb
 
 
 class GNN_JK(nn.Module):

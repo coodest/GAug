@@ -11,6 +11,7 @@ import dgl.function as fn
 from dgl import DGLGraph
 from sklearn.metrics import f1_score
 
+
 class GCN(object):
     def __init__(self, adj, adj_eval, features, labels, tvt_nids, cuda=-1, hidden_size=128, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, print_progress=True, dropedge=0):
         self.t = time.time()
@@ -22,7 +23,7 @@ class GCN(object):
         # config device
         if not torch.cuda.is_available():
             cuda = -1
-        self.device = torch.device(f'cuda:{cuda%8}' if cuda>=0 else 'cpu')
+        self.device = torch.device(f'cuda:{cuda%8}' if cuda >= 0 else 'cpu')
         # fix random seeds if needed
         if seed > 0:
             np.random.seed(seed)
@@ -45,7 +46,7 @@ class GCN(object):
             self.features = features
         else:
             self.features = torch.FloatTensor(features)
-        if self.features.size(1) in (1433, 3703):
+        if self.features.size(1) in (1433, 3703, 1639):
             self.features = F.normalize(self.features, p=1, dim=1)
         if len(labels.shape) == 2:
             labels = torch.FloatTensor(labels)
@@ -66,7 +67,7 @@ class GCN(object):
         adj.setdiag(1)
         self.adj = adj
         adj = sp.csr_matrix(adj)
-        self.G = DGLGraph(self.adj)
+        self.G = DGLGraph(self.adj).to(self.device)
         # normalization (D^{-1/2})
         degs = self.G.in_degrees().float()
         norm = torch.pow(degs, -0.5)
@@ -80,7 +81,7 @@ class GCN(object):
         adj_eval.setdiag(1)
         adj_eval = sp.csr_matrix(adj_eval)
         self.adj_eval = adj_eval
-        self.G_eval = DGLGraph(self.adj_eval)
+        self.G_eval = DGLGraph(self.adj_eval).to(self.device)
         # normalization (D^{-1/2})
         degs_eval = self.G_eval.in_degrees().float()
         norm_eval = torch.pow(degs_eval, -0.5)
@@ -139,7 +140,7 @@ class GCN(object):
                 logits_eval = self.model(self.G_eval, features).detach().cpu()
             vali_acc, _ = self.eval_node_cls(logits_eval[self.val_nid], labels[self.val_nid].cpu())
             if self.print_progress:
-                print('Epoch [{:2}/{}]: loss: {:.4f}, vali acc: {:.4f}'.format(epoch+1, self.epochs, l.item(), vali_acc))
+                print('Epoch [{:2}/{}]: loss: {:.4f}, vali acc: {:.4f}'.format(epoch + 1, self.epochs, l.item(), vali_acc))
             if vali_acc > best_vali_acc:
                 best_vali_acc = vali_acc
                 best_logits = logits_eval
@@ -214,6 +215,7 @@ class GCNLayer(nn.Module):
         if self.activation:
             h = self.activation(h)
         return h
+
 
 class GCN_model(nn.Module):
     def __init__(self,
