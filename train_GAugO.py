@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # features = pickle.load(open(f'data/graphs/{args.dataset}_features.pkl', 'rb'))
     # labels = pickle.load(open(f'data/graphs/{args.dataset}_labels.pkl', 'rb'))
 
-    tvt_nids, adj_orig, features, labels, graph = LPLoader.load()
+    tvt_nids, adj_orig, features, labels, graph = LPLoader().load_data()
     
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())
