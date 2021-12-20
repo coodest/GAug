@@ -275,9 +275,6 @@ class GAug(object):
             emb.cpu().detach().numpy()
         )
 
-        exit(0)
-
-
         test_acc_final = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
         # log both results
         self.logger.info('Final test acc with early stop: {:.4f}, without early stop: {:.4f}'

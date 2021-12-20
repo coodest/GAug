@@ -1,9 +1,5 @@
 import numpy as np
-from sklearn.metrics import roc_auc_score
-from sklearn.metrics import precision_score
-from sklearn.metrics import recall_score
-from sklearn.metrics import f1_score
-from sklearn.metrics import accuracy_score
+import sklearn.metrics as skm
 from sklearn.linear_model import LogisticRegression
 import random
 import math
@@ -16,6 +12,7 @@ from node2vec import Node2Vec
 from wikipedia2vec import Wikipedia2Vec
 import json
 import os
+
 
 class Funcs:
     @staticmethod
@@ -69,6 +66,7 @@ class GraphData:
         # store the global info of a graph, such as ["features"], ["events"] and ["trajectories"]
         self.states = dict()
 
+
 class Context:
     """
     all configurable fields of the project
@@ -112,6 +110,8 @@ class Profile(Context):
         dataset = "twitter"
     if profile == profile_g:
         dataset = "blogcatalog"
+
+
 P = Profile
 
 
@@ -149,8 +149,8 @@ class LPLoader:
         if "label" in graph[0]:
             labels = [graph[i]['label'] for i in graph]
         else:
-            labels= np.zeros(len(graph))
-        edge_index = [[],[]]
+            labels = np.zeros(len(graph))
+        edge_index = [[], []]
         for i in graph:
             edges = graph[i]["edges"]
             for e in edges:
@@ -475,6 +475,7 @@ class LPLoader:
 
         return graph
 
+
 class LPEval():
     @staticmethod
     def eval(graph, emb, multi_class=False, use_shuffle=False, neg_pos_ratio=1, split_ratio=0.5):
@@ -575,33 +576,37 @@ class LPEval():
 
         if multi_class:
             # accuracy
-            accuracy = accuracy_score(ground_truth, predicted)
+            accuracy = skm.accuracy_score(ground_truth, predicted)
 
             labels = set()
             for e in ground_truth:
                 labels.add(e)
 
             # Micro-F1
-            micro_f1 = f1_score(ground_truth, predicted, labels=list(labels), average="micro")
+            micro_f1 = skm.f1_score(ground_truth, predicted, labels=list(labels), average="micro")
 
             # Macro-F1
-            macro_f1 = f1_score(ground_truth, predicted, labels=list(labels), average="macro")
+            macro_f1 = skm.f1_score(ground_truth, predicted, labels=list(labels), average="macro")
 
             print("Acc: {:.4f} Micro-F1: {:.4f} Macro-F1: {:.4f}".format(accuracy, micro_f1, macro_f1))
         else:
             # auc
-            auc = roc_auc_score(ground_truth, predicted)
+            auc = skm.roc_auc_score(ground_truth, predicted)
 
             # accuracy
-            accuracy = accuracy_score(ground_truth, predicted)
+            accuracy = skm.accuracy_score(ground_truth, predicted)
 
             # recall
-            recall = recall_score(ground_truth, predicted)
+            recall = skm.recall_score(ground_truth, predicted)
 
             # precision
-            precision = precision_score(ground_truth, predicted)
+            precision = skm.precision_score(ground_truth, predicted)
 
             # F1
-            f1 = f1_score(ground_truth, predicted)
+            f1 = skm.f1_score(ground_truth, predicted)
 
-            print("Acc: {:.4f} AUC: {:.4f} Pr: {:.4f} Re: {:.4f} F1: {:.4f}".format(accuracy, auc, precision, recall, f1))
+            # AUPR
+            pr, re, _ = skm.precision_recall_curve(ground_truth, predicted)
+            aupr = skm.auc(re, pr)
+
+            print("Acc: {:.4f} AUC: {:.4f} Pr: {:.4f} Re: {:.4f} F1: {:.4f} AUPR: {:.4f}".format(accuracy, auc, precision, recall, f1, aupr))
