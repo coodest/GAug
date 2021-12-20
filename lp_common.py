@@ -123,8 +123,8 @@ class LPLoader:
             print("add type HAS_EDGE to relations.")
             self.graph_data.relations.get(GraphData.HAS_EDGE)
 
-
     def load_data(self):
+        print(P.dataset)
         if P.dataset == "dblp":
             graph = self.dblp()
         if P.dataset == "wikidata1k":
