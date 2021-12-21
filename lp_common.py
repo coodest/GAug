@@ -76,6 +76,8 @@ class Context:
     twitter_feat_dim = 500  # the real dimension may be a little bit more than this value
     embedding_method = 0  # 0: original embeddings / features, 1: node2vec
     feature_concat_embedding = False  # True / False, new embeddings with original embeddings / features together
+    neg_pos_ratio = 1
+    use_shuffle = True
 
     # 2. generator
     tr_ge_divide_ratio = 0.5
@@ -144,6 +146,8 @@ class LPLoader:
         if P.embedding_method != 0:
             self.add_embedding(graph)
 
+        graph = self.transform(graph)
+
         # convert to target format
         features = [graph[i]['feature'] for i in graph]
         if "label" in graph[0]:
@@ -174,6 +178,115 @@ class LPLoader:
 
         return np.array(tvt_nids), adj_orig, np.array(features), np.array(labels), graph
 
+    def transform(self, graph):
+        # edge (from, to, relation)
+        train_edges, train_edges_false, test_edges, test_edges_false = self.tvt_split(graph)
+        if not P.multi_class:
+            all_edges = train_edges + train_edges_false + test_edges + test_edges_false
+        else:
+            all_edges = train_edges + test_edges
+            print(f"relations: {len(self.graph_data.relations.forward)}")
+
+        # edge / node role exchange
+        edge2relation = dict()
+        get_prev = dict()
+        get_next = dict()
+        for ind, [f, t, r] in enumerate(all_edges):
+            edge2relation[(f, t)] = r
+
+            if f not in get_next:
+                get_next[f] = set()
+            get_next[f].add(t)
+            
+            if t not in get_prev:
+                get_prev[t] = set()
+            get_prev[t].add(f)
+
+        # convert to target format
+        used_edge = set()
+        tmp = []
+        for f, t, r in all_edges:
+            current_edge = (f, t)
+            used_edge.add(current_edge)
+            if f in get_prev:
+                for ff in get_prev[f]:
+                    prev_edge = (ff, f)
+                    used_edge.add(prev_edge)
+                    tmp.append([prev_edge, current_edge])
+
+            if t in get_next:
+                for tt in get_next[t]:
+                    next_edge = (t, tt)
+                    used_edge.add(next_edge)
+                    tmp.append([current_edge, next_edge])
+
+        labels = []
+        edge2id = dict()
+        for ind, edge in enumerate(used_edge):
+            edge2id[edge] = ind
+            labels.append(edge2relation[edge])
+
+        new_graph = dict()
+
+        for a, b in tmp:
+            x = edge2id[a]
+            y = edge2id[b]
+            if x not in new_graph:
+                new_graph[x] = dict()
+                new_graph[x]["edges"] = dict()
+                new_graph[x]["feature"] = np.concatenate([
+                    graph[a[0]]["feature"],
+                    graph[a[1]]["feature"],
+                ], axis=0, dtype=np.float32)
+                new_graph[x]["label"] = labels[x]
+            if y not in new_graph:
+                new_graph[y] = dict()
+                new_graph[y]["edges"] = dict()
+                new_graph[y]["feature"] = np.concatenate([
+                    graph[b[0]]["feature"],
+                    graph[b[1]]["feature"],
+                ], axis=0, dtype=np.float32)
+                new_graph[y]["label"] = labels[y]
+            new_graph[x]["edges"][y] = 1
+
+        return graph
+
+    def tvt_split(self, graph):
+        # feeder
+        positive_sample = []
+        negative_sample = []
+
+        for node_id in graph:
+            for edge in graph[node_id]["edges"]:
+                if edge in graph:
+                    positive_sample.append((node_id, edge, graph[node_id]["edges"][edge]))
+
+        if not P.multi_class:
+            node_num = len(graph)
+            target_neg_num = math.ceil(len(positive_sample) * P.neg_pos_ratio)
+            if target_neg_num < 1:
+                target_neg_num = 1
+            while len(negative_sample) < target_neg_num:
+                rand_from_node = Funcs.rand_int(0, node_num - 1)
+                rand_to_node = Funcs.rand_int(0, node_num - 1)
+                from_node = list(graph.keys())[rand_from_node]
+                to_node = list(graph.keys())[rand_to_node]
+                if (from_node, to_node) not in positive_sample:
+                    negative_sample.append((from_node, to_node, 0))
+
+        # shuffle train and test
+        if P.use_shuffle:
+            Funcs.shuffle_list(positive_sample)
+            Funcs.shuffle_list(negative_sample)
+
+        train_pos = positive_sample[:int(len(positive_sample) * P.tr_ge_divide_ratio)]
+        test_pos = positive_sample[int(len(positive_sample) * P.tr_ge_divide_ratio):]
+
+        train_neg = negative_sample[:int(len(negative_sample) * P.tr_ge_divide_ratio)]
+        test_neg = negative_sample[int(len(negative_sample) * P.tr_ge_divide_ratio):]
+
+        return train_pos, train_neg, test_pos, test_neg
+   
     def add_embedding(self, graph, undirected=False):
         # Make graph
         nodes = list(graph)
@@ -478,7 +591,7 @@ class LPLoader:
 
 class LPEval():
     @staticmethod
-    def eval(graph, emb, multi_class=False, use_shuffle=False, neg_pos_ratio=1, split_ratio=0.5):
+    def eval(graph, emb, multi_class=P.multi_class, neg_pos_ratio=P.neg_pos_ratio, split_ratio=0.5):
         # feeder
         positive_sample = []
         negative_sample = []
@@ -502,7 +615,7 @@ class LPEval():
                     negative_sample.append((from_node, to_node, 0))
 
         # shuffle train and test
-        if use_shuffle:
+        if P.use_shuffle:
             Funcs.shuffle_list(positive_sample)
             Funcs.shuffle_list(negative_sample)
 
@@ -539,7 +652,7 @@ class LPEval():
             train_edge_embs = pos_train_edge_embs
             train_edge_labels = np.array([e[2] for e in train_edges])
         else:
-            train_edge_embs = np.concatenate([pos_train_edge_embs, neg_train_edge_embs])
+            train_edge_embs = np.concatenate([pos_train_edge_embs, neg_train_edge_embs], axis=0)
             train_edge_labels = np.array([e[2] for e in (train_edges + train_edges_false)])
 
         # Test-set edge embeddings, labels
@@ -549,7 +662,7 @@ class LPEval():
             test_edge_embs = pos_test_edge_embs
             test_edge_labels = np.array([e[2] for e in test_edges])
         else:
-            test_edge_embs = np.concatenate([pos_test_edge_embs, neg_test_edge_embs])
+            test_edge_embs = np.concatenate([pos_test_edge_embs, neg_test_edge_embs], axis=0)
             test_edge_labels = np.array([e[2] for e in (test_edges + test_edges_false)])
 
         # Train logistic regression classifier on train-set edge embeddings

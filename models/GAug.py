@@ -227,7 +227,8 @@ class GAug(object):
         best_val_acc = 0.
         patience_step = 0
         # train model
-        for epoch in range(self.n_epochs):
+        # for epoch in range(self.n_epochs):
+        for epoch in range(50):
             print(f'epoch: {epoch}')
             # update the learning rate for ep_net if needed
             if self.warmup:

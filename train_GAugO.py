@@ -58,7 +58,7 @@ if __name__ == "__main__":
         n_layers = 3
 
     accs = []
-    for _ in range(10):
+    for _ in range(1):
         model = GAug(adj_orig, features, labels, tvt_nids, cuda=gpu, gae=True, alpha=params['alpha'], beta=params['beta'], temperature=params['temp'], warmup=0, gnnlayer_type=gnn, jknet=jk, lr=lr, n_layers=n_layers, log=False, feat_norm=feat_norm)
         acc = model.fit(graph, pretrain_ep=params['pretrain_ep'], pretrain_nc=params['pretrain_nc'])
         accs.append(acc)
