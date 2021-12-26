@@ -96,7 +96,7 @@ class Profile(Context):
     profile_e = "ppi"
     profile_f = "twitter"
     profile_g = "blogcatalog"
-    profile = profile_g
+    profile = profile_e
 
     if profile == profile_a:
         dataset = "dblp"
