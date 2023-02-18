@@ -3,8 +3,6 @@ import sklearn.metrics as skm
 from sklearn.linear_model import LogisticRegression
 import random
 import math
-import torch_geometric.transforms as T
-from torch_geometric.datasets import AttributedGraphDataset, CitationFull
 import pickle
 import scipy.sparse as sp
 import networkx as nx
@@ -96,7 +94,7 @@ class Profile(Context):
     profile_e = "ppi"
     profile_f = "twitter"
     profile_g = "blogcatalog"
-    profile = profile_e
+    profile = os.environ["profile"]
 
     if profile == profile_a:
         dataset = "dblp"
@@ -136,9 +134,9 @@ class LPLoader:
         if P.dataset == "wikidata10k":
             graph = self.wiki(10000)
         if P.dataset == "ppi":
-            graph = self.ppi()
+            graph = self.ppi(3000)
         if P.dataset == "twitter":
-            graph = self.twitter()
+            graph = self.twitter(100)
         if P.dataset == "blogcatalog":
             graph = self.blogcatalog()
 
@@ -237,7 +235,7 @@ class LPLoader:
                 new_graph[x]["feature"] = np.concatenate([
                     graph[a[0]]["feature"],
                     graph[a[1]]["feature"],
-                ], axis=0, dtype=np.float32)
+                ], axis=0)
                 new_graph[x]["label"] = labels[x]
             if y not in new_graph:
                 new_graph[y] = dict()
@@ -245,7 +243,7 @@ class LPLoader:
                 new_graph[y]["feature"] = np.concatenate([
                     graph[b[0]]["feature"],
                     graph[b[1]]["feature"],
-                ], axis=0, dtype=np.float32)
+                ], axis=0)
                 new_graph[y]["label"] = labels[y]
             new_graph[x]["edges"][y] = 1
 
@@ -314,7 +312,7 @@ class LPLoader:
                 if P.embedding_method == 1:  # node2vec
                     graph[e]["feature"] = np.concatenate((
                         graph[e]["feature"],
-                        np.array(list(embeddings[str(e)]), dtype=float)
+                        np.array(list(embeddings[str(e)]), dtype=np.float32)
                     ), axis=0)
             else:
                 if P.embedding_method == 1:  # node2vec
@@ -322,6 +320,8 @@ class LPLoader:
 
     def dblp(self, redownload=False):
         if redownload:
+            import torch_geometric.transforms as T
+            from torch_geometric.datasets import AttributedGraphDataset, CitationFull
             dataset = CitationFull(P.dataset_dir + "dblp/", 'DBLP', transform=T.NormalizeFeatures())
             data = dataset[0]
             x = data.x.cpu().detach().numpy()
@@ -424,7 +424,7 @@ class LPLoader:
             
             return new_graph
 
-    def twitter(self, num=1000):
+    def twitter(self, num=100):
         feature_dicts = dict()
         edge_dicts = dict()
         entity_num = 0
@@ -522,7 +522,7 @@ class LPLoader:
 
         return self.graph_data.graph
 
-    def ppi(self, num=1000):
+    def ppi(self, num=3000):
         with open(P.dataset_dir + "ppi/" + "ppi-class_map.json", "r") as class_data:
             protein_class = json.load(class_data)
         protein_feats = np.load(P.dataset_dir + "ppi/" + "ppi-feats.npy")
@@ -563,6 +563,8 @@ class LPLoader:
 
     def blogcatalog(self, redownload=False):
         if redownload:
+            import torch_geometric.transforms as T
+            from torch_geometric.datasets import AttributedGraphDataset, CitationFull
             dataset = AttributedGraphDataset(P.dataset_dir + 'blogcatalog/', 'blogcatalog', transform=T.NormalizeFeatures())
             data = dataset[0]
             x = data.x.cpu().detach().numpy()  # (5196, 8189)
@@ -674,13 +676,16 @@ class LPEval():
 
         # Predicted edge scores: probability of being of class "1" (real edge)
         test_preds = edge_classifier.predict(test_edge_embs)
+        test_probs = edge_classifier.predict_proba(test_edge_embs)
 
         # record result
         predicted = list()
         ground_truth = list()
+        score = list()
         for i in range(len(test_edge_labels)):
             # print("--- {} - {} ---".format(test_preds[i], test_edge_labels[i]))
             predicted.append(test_preds[i])
+            score.append(test_probs[i][1])
             ground_truth.append(test_edge_labels[i])
 
         if len(predicted) == 0:
@@ -704,7 +709,7 @@ class LPEval():
             print("Acc: {:.4f} Micro-F1: {:.4f} Macro-F1: {:.4f}".format(accuracy, micro_f1, macro_f1))
         else:
             # auc
-            auc = skm.roc_auc_score(ground_truth, predicted)
+            auc = skm.roc_auc_score(ground_truth, score)
 
             # accuracy
             accuracy = skm.accuracy_score(ground_truth, predicted)
@@ -719,7 +724,10 @@ class LPEval():
             f1 = skm.f1_score(ground_truth, predicted)
 
             # AUPR
-            pr, re, _ = skm.precision_recall_curve(ground_truth, predicted)
+            pr, re, _ = skm.precision_recall_curve(ground_truth, score)
             aupr = skm.auc(re, pr)
 
-            print("Acc: {:.4f} AUC: {:.4f} Pr: {:.4f} Re: {:.4f} F1: {:.4f} AUPR: {:.4f}".format(accuracy, auc, precision, recall, f1, aupr))
+            # AP
+            ap = skm.average_precision_score(ground_truth, score)
+
+            print("Acc: {:.4f} AUC: {:.4f} Pr: {:.4f} Re: {:.4f} F1: {:.4f} AUPR: {:.4f} AP: {:.4f}".format(accuracy, auc, precision, recall, f1, aupr, ap))

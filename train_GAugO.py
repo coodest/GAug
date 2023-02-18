@@ -7,12 +7,12 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"  # must before import the tenso
 import json
 import pickle
 import argparse
-import numpy as np
 import scipy.sparse as sp
+import numpy as np
 from models.GAug import GAug
 import torch
-import torch_geometric.transforms as T
-from torch_geometric.datasets import Planetoid, CitationFull
+# import torch_geometric.transforms as T
+# from torch_geometric.datasets import Planetoid, CitationFull
 from lp_common import LPLoader, LPEval
 
 if __name__ == "__main__":
